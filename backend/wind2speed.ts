@@ -50,7 +50,7 @@ interface Stats {
 	lrod: number;
 }
 
-interface Station {
+export interface Station {
 	nam: string;
 	cod: string;
 	DInterval: number;

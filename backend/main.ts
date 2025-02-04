@@ -1,4 +1,4 @@
-import { getWSData } from "./wind2speed.ts";
+import { getWSData, Station } from "./wind2speed.ts";
 import { Application, Router } from "@oak/oak";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { stringify } from "jsr:@std/csv/stringify";
@@ -39,29 +39,15 @@ router.post("/tracked-stations", async (ctx) => {
 });
 
 router.get("/stations", async (ctx) => {
-	const stationStats: Record<
-		string,
-		{ stationId: number; entries: number; lastUpdated: number }
-	> = {};
-	const entries = await kv.list<TableDataItem>({
-		prefix: ["windHistoryData"],
+	const stationsEntries = await kv.list<StationStats>({
+		prefix: ["station"],
 	});
-	for await (const entry of entries) {
-		const stationId = entry.key[1] as number;
-		if (!stationStats[stationId]) {
-			stationStats[stationId] = {
-				stationId,
-				entries: 1,
-				lastUpdated: new Date(entry.value.obsTimeLocal).getTime(),
-			};
-		}
-		stationStats[stationId].entries++;
-		const entryTimestamp = new Date(entry.value.obsTimeLocal).getTime();
-		if (entryTimestamp > stationStats[stationId].lastUpdated) {
-			stationStats[stationId].lastUpdated = entryTimestamp;
-		}
+	const stations = [];
+	for await (const entry of stationsEntries) {
+		stations.push(entry.value);
 	}
-	ctx.response.body = Object.values(stationStats);
+
+	ctx.response.body = stations;
 });
 
 router.get("/wind-history/:stationId/csv", async (ctx) => {
@@ -112,33 +98,39 @@ app.addEventListener("listen", ({ hostname, port }) => {
 	console.log(`Listening on ${hostname}:${port}`);
 });
 
-Deno.cron("Download wind data", "*/5 * * * *", async () => {
+Deno.cron("Download wind data", "*/10 * * * *", async () => {
 	await downloadNextStationWindData();
 });
+await downloadNextStationWindData();
 
 async function downloadNextStationWindData() {
 	const trackedStations =
 		(await kv.get<number[]>(["trackedStations"])).value ?? [];
-	const lastDownloadedStation =
-		(await kv.get<number>(["lastDownloadedStation"])).value ?? NaN;
-	const lastIndex = trackedStations.indexOf(lastDownloadedStation);
+	const latestUpdatedStation =
+		(await kv.get<number>(["latestUpdatedStation"])).value ?? NaN;
+	const lastIndex = trackedStations.indexOf(latestUpdatedStation);
 	const nextIndex =
 		lastIndex + 1 >= trackedStations.length ? 0 : lastIndex + 1;
 	const nextStationId = trackedStations[nextIndex];
-	return downloadWindData(nextStationId);
+	if (nextStationId) {
+		return downloadWindData(nextStationId);
+	} else {
+		console.log("No tracked stations");
+	}
 }
 
 async function downloadWindData(stationId: number) {
+	console.log(`Downloading wind data for station ${stationId}`);
 	const data = await getWSData(stationId);
 
-	const lastEntryTimestampEntry = await kv.get<number>([
-		"lastEntryTimestamp",
+	const stationStats = await kv.get<StationStats>([
+		"station",
 		data.station.id,
 	]);
-	const lastEntryTimestamp = lastEntryTimestampEntry.value || 0;
+	const latestEntryTimestamp = stationStats.value?.latestEntryTimestamp || 0;
 
 	const newTableData = data.tableData.filter(
-		(entry) => new Date(entry.obsTimeLocal).getTime() > lastEntryTimestamp
+		(entry) => new Date(entry.obsTimeLocal).getTime() > latestEntryTimestamp
 	);
 
 	if (newTableData.length) {
@@ -150,11 +142,14 @@ async function downloadWindData(stationId: number) {
 				entry
 			);
 		}
-		transaction.set(
-			["lastEntryTimestamp", data.station.id],
-			new Date().getTime()
-		);
-		transaction.set(["lastDownloadedStation"], stationId);
+		transaction.set(["station", data.station.id], {
+			...data.station,
+			entries: (stationStats.value?.entries ?? 0) + newTableData.length,
+			latestEntryTimestamp: new Date(
+				newTableData[0].obsTimeLocal
+			).getTime(),
+		});
+		transaction.set(["latestUpdatedStation"], stationId);
 
 		const result = await transaction.commit();
 
@@ -165,5 +160,11 @@ async function downloadWindData(stationId: number) {
 		}
 	} else {
 		console.log("No new wind data entries");
+		kv.set(["latestUpdatedStation"], stationId);
 	}
+}
+
+interface StationStats extends Station {
+	entries: number;
+	latestEntryTimestamp: number;
 }
