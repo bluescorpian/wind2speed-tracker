@@ -8,29 +8,11 @@
 		ListGroup,
 		ListGroupItem,
 	} from "@sveltestrap/sveltestrap";
+	import { type StationStats } from "../../../types";
 
 	import moment from "moment";
-	interface Station {
-		nam: string;
-		cod: string;
-		DInterval: number;
-		id: number;
-		wlm: number;
-		wlmType: number;
-		wlmdt: string;
-		wlmMin: number;
-		wlmMax: number;
-		tide: number;
-		tideDates: string[];
-		tideValues: number[];
-		tideNow: number;
-		hasSensors: boolean;
-		hasRainSensor: boolean;
-		entries: number;
-		latestEntryTimestamp: number;
-	}
 
-	let stations: Station[] = $state([]);
+	let stations: StationStats[] = $state([]);
 	$effect(() => {
 		fetch(import.meta.env.VITE_API_URL + "/stations")
 			.then(async (res) => {

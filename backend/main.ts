@@ -1,10 +1,76 @@
-import { getWSData, Station } from "./wind2speed.ts";
+import { StationStats, type TableDataItem } from "../types.d.ts";
+import { getWSData } from "./wind2speed.ts";
 import { Application, Router } from "@oak/oak";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { stringify } from "jsr:@std/csv/stringify";
-import { TableDataItem } from "./wind2speed.ts";
 
 const kv = await Deno.openKv(Deno.env.get("KV_STORE") || undefined);
+
+Deno.cron("Download wind data", "*/10 * * * *", async () => {
+	await downloadNextStationWindData();
+});
+await downloadNextStationWindData();
+
+async function downloadNextStationWindData() {
+	const trackedStations =
+		(await kv.get<number[]>(["trackedStations"])).value ?? [];
+	const latestUpdatedStation =
+		(await kv.get<number>(["latestUpdatedStation"])).value ?? NaN;
+	const lastIndex = trackedStations.indexOf(latestUpdatedStation);
+	const nextIndex =
+		lastIndex + 1 >= trackedStations.length ? 0 : lastIndex + 1;
+	const nextStationId = trackedStations[nextIndex];
+	if (nextStationId) {
+		return downloadWindData(nextStationId);
+	} else {
+		console.log("No tracked stations");
+	}
+}
+
+async function downloadWindData(stationId: number) {
+	console.log(`Downloading wind data for station ${stationId}`);
+	const data = await getWSData(stationId);
+
+	const stationStats = await kv.get<StationStats>([
+		"station",
+		data.station.id,
+	]);
+	const latestEntryTimestamp = stationStats.value?.latestEntryTimestamp || 0;
+
+	const newTableData = data.tableData.filter(
+		(entry) => new Date(entry.obsTimeLocal).getTime() > latestEntryTimestamp
+	);
+
+	if (newTableData.length) {
+		const transaction = kv.atomic();
+
+		for (const entry of newTableData) {
+			transaction.set(
+				["windHistoryData", data.station.id, entry.id],
+				entry
+			);
+		}
+		transaction.set(["station", data.station.id], {
+			...data.station,
+			entries: (stationStats.value?.entries ?? 0) + newTableData.length,
+			latestEntryTimestamp: new Date(
+				newTableData[0].obsTimeLocal
+			).getTime(),
+		});
+		transaction.set(["latestUpdatedStation"], stationId);
+
+		const result = await transaction.commit();
+
+		if (result.ok) {
+			console.log(`Saved ${newTableData.length} new wind data entries`);
+		} else {
+			console.error("Failed to save wind data to KV store");
+		}
+	} else {
+		console.log("No new wind data entries");
+		kv.set(["latestUpdatedStation"], stationId);
+	}
+}
 
 const router = new Router();
 
@@ -93,78 +159,4 @@ app.use(oakCors({ origin: "*" }));
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-app.listen({ port: 3000 });
-app.addEventListener("listen", ({ hostname, port }) => {
-	console.log(`Listening on ${hostname}:${port}`);
-});
-
-Deno.cron("Download wind data", "*/10 * * * *", async () => {
-	await downloadNextStationWindData();
-});
-await downloadNextStationWindData();
-
-async function downloadNextStationWindData() {
-	const trackedStations =
-		(await kv.get<number[]>(["trackedStations"])).value ?? [];
-	const latestUpdatedStation =
-		(await kv.get<number>(["latestUpdatedStation"])).value ?? NaN;
-	const lastIndex = trackedStations.indexOf(latestUpdatedStation);
-	const nextIndex =
-		lastIndex + 1 >= trackedStations.length ? 0 : lastIndex + 1;
-	const nextStationId = trackedStations[nextIndex];
-	if (nextStationId) {
-		return downloadWindData(nextStationId);
-	} else {
-		console.log("No tracked stations");
-	}
-}
-
-async function downloadWindData(stationId: number) {
-	console.log(`Downloading wind data for station ${stationId}`);
-	const data = await getWSData(stationId);
-
-	const stationStats = await kv.get<StationStats>([
-		"station",
-		data.station.id,
-	]);
-	const latestEntryTimestamp = stationStats.value?.latestEntryTimestamp || 0;
-
-	const newTableData = data.tableData.filter(
-		(entry) => new Date(entry.obsTimeLocal).getTime() > latestEntryTimestamp
-	);
-
-	if (newTableData.length) {
-		const transaction = kv.atomic();
-
-		for (const entry of newTableData) {
-			transaction.set(
-				["windHistoryData", data.station.id, entry.id],
-				entry
-			);
-		}
-		transaction.set(["station", data.station.id], {
-			...data.station,
-			entries: (stationStats.value?.entries ?? 0) + newTableData.length,
-			latestEntryTimestamp: new Date(
-				newTableData[0].obsTimeLocal
-			).getTime(),
-		});
-		transaction.set(["latestUpdatedStation"], stationId);
-
-		const result = await transaction.commit();
-
-		if (result.ok) {
-			console.log(`Saved ${newTableData.length} new wind data entries`);
-		} else {
-			console.error("Failed to save wind data to KV store");
-		}
-	} else {
-		console.log("No new wind data entries");
-		kv.set(["latestUpdatedStation"], stationId);
-	}
-}
-
-interface StationStats extends Station {
-	entries: number;
-	latestEntryTimestamp: number;
-}
+export default app;
