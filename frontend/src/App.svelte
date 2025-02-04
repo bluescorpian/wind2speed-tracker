@@ -5,8 +5,13 @@
 </script>
 
 <main>
-	<Container class="mt-5" sm
-		><Row>
+	<Container sm>
+		<Row
+			><Col sm="12" md={{ offset: 4, size: 5 }}
+				><h1 class="m-4">wind2speed-tracker</h1></Col
+			></Row
+		>
+		<Row>
 			<Col sm="12" md={{ size: 4, offset: 4 }}
 				><SelectTrackedStatiosn /></Col
 			>
