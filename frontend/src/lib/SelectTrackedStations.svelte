@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button, Input, InputGroup } from "@sveltestrap/sveltestrap";
+	import { authState } from "./auth.svelte";
 
 	let loading = $state(true);
 	$effect(() => {
@@ -36,6 +37,7 @@
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
+				Authorization: authState.password,
 			},
 			body: formData.toString(),
 		})
@@ -48,12 +50,14 @@
 					msg = res.statusText;
 				} else {
 					msg = data.msg;
-					trackedStationsStr = data.trackedStations.join(",");
+					if (res.ok)
+						trackedStationsStr = data.trackedStations.join(",");
 				}
 				success = res.ok;
 				submitted = true;
 			})
 			.catch((err) => {
+				console.error(err);
 				msg = err.message;
 				success = false;
 				submitted = true;
@@ -74,13 +78,15 @@
 				class={inputValidation}
 				oninput={() => (submitted = false)}
 				bind:value={trackedStationsStr}
-				disabled={loading}
+				disabled={!authState.loggedIn || loading}
 			/>
 			<label for="trackedStations">Tracked Stations</label>
 		</div>
 
-		<Button color="primary" type="submit" disabled={submitting || loading}
-			>Save</Button
+		<Button
+			color="primary"
+			type="submit"
+			disabled={!authState.loggedIn || submitting || loading}>Save</Button
 		>
 		{#if success}
 			<div class="valid-feedback">{msg}</div>

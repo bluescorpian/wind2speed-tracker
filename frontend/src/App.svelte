@@ -2,13 +2,14 @@
 	import { Col, Container, Row } from "@sveltestrap/sveltestrap";
 	import SelectTrackedStatiosn from "./lib/SelectTrackedStations.svelte";
 	import Stations from "./lib/Stations.svelte";
+	import Login from "./lib/Login.svelte";
 </script>
 
 <main>
 	<Container sm>
 		<Row
 			><Col sm="12" md={{ offset: 4, size: 5 }}
-				><h1 class="m-4">wind2speed-tracker</h1></Col
+				><h1 class="mt-4 mb-4">wind2speed-tracker</h1></Col
 			></Row
 		>
 		<Row>
@@ -22,4 +23,5 @@
 			></Row
 		>
 	</Container>
+	<Login></Login>
 </main>

@@ -6,10 +6,16 @@ import { stringify } from "jsr:@std/csv/stringify";
 
 const kv = await Deno.openKv(Deno.env.get("KV_STORE") || undefined);
 
-Deno.cron("Download wind data", "*/10 * * * *", async () => {
+Deno.cron(
+	"Download wind data",
+	`*/${Deno.env.get("CRON_INTERVAL") || "1"} * * * *`,
+	async () => {
+		await downloadNextStationWindData();
+	}
+);
+if (Deno.env.get("INITIAL_DOWNLOAD") === "true") {
 	await downloadNextStationWindData();
-});
-await downloadNextStationWindData();
+}
 
 async function downloadNextStationWindData() {
 	const trackedStations =
@@ -74,12 +80,36 @@ async function downloadWindData(stationId: number) {
 
 const router = new Router();
 
+router.post("/login", async (ctx) => {
+	const body = await ctx.request.body.text();
+	const formData = new URLSearchParams(body);
+	const password = formData.get("password");
+
+	if (password === (Deno.env.get("PASSWORD") || "")) {
+		ctx.response.status = 200;
+	} else {
+		ctx.response.status = 401;
+		ctx.response.body = "Incorrect password";
+	}
+});
+
 router.get("/tracked-stations", async (ctx) => {
 	const trackedStations = (await kv.get<number[]>(["trackedStations"])).value;
 	ctx.response.body = trackedStations ?? [];
 });
 
 router.post("/tracked-stations", async (ctx) => {
+	if (
+		(ctx.request.headers.get("Authorization") ?? "") !==
+		(Deno.env.get("PASSWORD") ?? "")
+	) {
+		ctx.response.status = 401;
+		ctx.response.body = {
+			msg: "Unauthorized",
+		};
+		return;
+	}
+
 	try {
 		const body = await ctx.request.body.text();
 		const formData = new URLSearchParams(body);
@@ -96,11 +126,11 @@ router.post("/tracked-stations", async (ctx) => {
 			ctx.response.body = { msg: "Saved Successfully", trackedStations };
 		} else {
 			ctx.response.status = 500;
-			ctx.response.body = "Failed to save tracked stations";
+			ctx.response.body = { msg: "Failed to save tracked stations" };
 		}
 	} catch (err) {
 		ctx.response.status = 500;
-		ctx.response.body = "Failed to save tracked stations";
+		ctx.response.body = { msg: "Failed to save tracked stations" };
 	}
 });
 
@@ -155,7 +185,7 @@ router.get("/wind-history/:stationId/csv", async (ctx) => {
 });
 
 const app = new Application();
-app.use(oakCors({ origin: "*" }));
+app.use(oakCors({ origin: Deno.env.get("ORIGIN") || "*" }));
 app.use(router.routes());
 app.use(router.allowedMethods());
 
