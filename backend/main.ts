@@ -44,7 +44,9 @@ async function downloadWindData(stationId: number) {
 	const latestEntryTimestamp = stationStats.value?.latestEntryTimestamp || 0;
 
 	const newTableData = data.tableData.filter(
-		(entry) => new Date(entry.obsTimeLocal).getTime() > latestEntryTimestamp
+		(entry) =>
+			parseObsTimeLocal(entry.obsTimeLocal).getTime() >
+			latestEntryTimestamp
 	);
 
 	if (newTableData.length) {
@@ -59,7 +61,7 @@ async function downloadWindData(stationId: number) {
 		transaction.set(["station", data.station.id], {
 			...data.station,
 			entries: (stationStats.value?.entries ?? 0) + newTableData.length,
-			latestEntryTimestamp: new Date(
+			latestEntryTimestamp: parseObsTimeLocal(
 				newTableData[0].obsTimeLocal
 			).getTime(),
 		});
@@ -76,6 +78,10 @@ async function downloadWindData(stationId: number) {
 		console.log("No new wind data entries");
 		kv.set(["latestUpdatedStation"], stationId);
 	}
+}
+
+function parseObsTimeLocal(obsTimeLocal: string): Date {
+	return new Date(obsTimeLocal + "+02:00");
 }
 
 const router = new Router();
