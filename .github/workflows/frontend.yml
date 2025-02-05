@@ -42,9 +42,6 @@ jobs:
             - name: Build project
               run: pnpm run build
 
-            - name: List build output
-              run: ls -R dist
-
             - name: Setup Pages
               uses: actions/configure-pages@v5
 

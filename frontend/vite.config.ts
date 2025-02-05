@@ -1,7 +1,8 @@
-import { defineConfig } from 'vite'
-import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { defineConfig } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
-})
+	base: "https://bluescorpian.github.io/wind2speed-tracker/",
+	plugins: [svelte()],
+});
