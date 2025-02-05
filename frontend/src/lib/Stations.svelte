@@ -41,7 +41,12 @@
 					><strong>Total Entries</strong>: {station.entries}</ListGroupItem
 				>
 			</ListGroup>
-			<CardFooter><Button>CSV</Button></CardFooter>
+			<CardFooter
+				><Button
+					href={import.meta.env.VITE_API_URL +
+						`/wind-history/${station.id}/csv`}>CSV</Button
+				></CardFooter
+			>
 		</Card>
 	</Col>
 {/each}
