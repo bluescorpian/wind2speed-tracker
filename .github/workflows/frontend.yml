@@ -1,37 +1,44 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
-name: Deploy frontend to Pages
+name: Deploy Frontend to Pages
 
 on:
     push:
-        branches: ["main"]
+        branches:
+            - main
     pull_request:
-        branches: ["main"]
+        branches:
+            - main
 
 jobs:
     build:
         runs-on: ubuntu-latest
-
         defaults:
             run:
-                working-directory: client
+                working-directory: frontend
 
         steps:
-            - uses: actions/checkout@v4
-            - name: Use Node.js
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
                   node-version: "22.x"
-            - run: npm run build
-              working-directory: frontend
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build project
+              run: npm run build
+
             - name: Setup Pages
               uses: actions/configure-pages@v5
+
             - name: Upload artifact
               uses: actions/upload-pages-artifact@v3
               with:
-                  # Upload entire repository
-                  path: "frontend/dist"
+                  # Upload the build output from the "dist" folder
+                  path: dist
+
             - name: Deploy to GitHub Pages
               id: deployment
               uses: actions/deploy-pages@v4
