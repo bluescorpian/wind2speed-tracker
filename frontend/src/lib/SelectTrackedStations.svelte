@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button, Input, InputGroup } from "@sveltestrap/sveltestrap";
-	import { authState } from "./auth.svelte";
+	import { authState, getPassword } from "./auth.svelte";
 
 	let loading = $state(true);
 	$effect(() => {
@@ -37,7 +37,7 @@
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
-				Authorization: authState.password,
+				Authorization: getPassword() ?? "",
 			},
 			body: formData.toString(),
 		})

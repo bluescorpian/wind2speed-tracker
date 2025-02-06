@@ -1,8 +1,24 @@
 <script lang="ts">
-	import { Col, Container, Row } from "@sveltestrap/sveltestrap";
+	import {
+		Col,
+		Container,
+		Modal,
+		ModalBody,
+		ModalHeader,
+		Row,
+		Spinner,
+	} from "@sveltestrap/sveltestrap";
 	import SelectTrackedStatiosn from "./lib/SelectTrackedStations.svelte";
 	import Stations from "./lib/Stations.svelte";
 	import Login from "./lib/Login.svelte";
+	import { checkSavedPassword } from "./lib/auth.svelte";
+
+	let checkingPassword: boolean = $state(true);
+	let foundPassword: boolean = $state(false);
+	checkSavedPassword().then((fp) => {
+		foundPassword = fp;
+		checkingPassword = false;
+	});
 </script>
 
 <main>
@@ -23,5 +39,14 @@
 			></Row
 		>
 	</Container>
-	<Login></Login>
+	{#if checkingPassword}
+		<Modal isOpen={checkingPassword} centered={true}>
+			<ModalHeader>Logging In...</ModalHeader>
+			<ModalBody>
+				<Spinner></Spinner>
+			</ModalBody>
+		</Modal>
+	{:else if !foundPassword}
+		<Login></Login>
+	{/if}
 </main>

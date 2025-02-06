@@ -8,7 +8,7 @@
 		ModalFooter,
 		ModalHeader,
 	} from "@sveltestrap/sveltestrap";
-	import { authState } from "./auth.svelte";
+	import { authState, setPassword } from "./auth.svelte";
 
 	let open = $state(true);
 	let loggingIn = $state(false);
@@ -33,7 +33,7 @@
 			.then(async (res) => {
 				if (res.status === 200) {
 					authState.loggedIn = true;
-					authState.password = password;
+					setPassword(password);
 					open = false;
 				} else {
 					error = (await res.text()) || res.statusText;
@@ -46,8 +46,6 @@
 			.finally(() => {
 				loggingIn = false;
 			});
-		// authState.loggedIn = true;
-		// open = false;
 	}
 </script>
 
@@ -72,8 +70,10 @@
 			<Button color="primary" type="submit" disabled={loggingIn}
 				>Login</Button
 			>
-			<Button color="secondary" onclick={() => (open = false)}
-				>Guest</Button
+			<Button
+				color="secondary"
+				type="button"
+				onclick={() => (open = false)}>Guest</Button
 			>
 		</ModalFooter>
 	</form>
