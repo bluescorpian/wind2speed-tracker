@@ -271,6 +271,38 @@ router.get("/wind-history/:stationId", async (ctx) => {
 	ctx.response.body = stream;
 });
 
+router.delete("/reset-wind-history", authMiddleware, async (ctx) => {
+	const entries = await kv.list<TableDataItem>({
+		prefix: ["windHistoryData"],
+	});
+	const stations = await kv.list<StationStats>({
+		prefix: ["station"],
+	});
+	const transaction = kv.atomic();
+	for await (const entry of entries) {
+		transaction.delete(entry.key);
+	}
+	for await (const station of stations) {
+		transaction.set(["station", station.value.id], {
+			...station.value,
+			totalEntries: 0,
+			months: {},
+		});
+	}
+
+	const result = await transaction.commit();
+	if (result.ok) {
+		ctx.response.body = { msg: "Deleted all wind history data" };
+		ctx.response.status = 200;
+	} else {
+		ctx.response.body = {
+			msg: "Failed to delete wind history data",
+			result,
+		};
+		ctx.response.status = 500;
+	}
+});
+
 const app = new Application();
 app.use(oakCors({ origin: Deno.env.get("ORIGIN") || "*" }));
 app.use(router.routes());
