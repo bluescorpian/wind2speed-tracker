@@ -47,6 +47,7 @@
 				<Button
 					color="secondary"
 					outline
+					disabled={!station.months?.length}
 					onclick={() => {
 						downloadStation = station;
 						downloadOpen = true;
