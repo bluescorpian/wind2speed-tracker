@@ -278,10 +278,10 @@ router.delete("/reset-wind-history", authMiddleware, async (ctx) => {
 	const stations = kv.list<StationStats>({
 		prefix: ["station"],
 	});
-	const transaction = kv.atomic();
 	for await (const entry of entries) {
-		transaction.delete(entry.key);
+		kv.delete(entry.key);
 	}
+	const transaction = kv.atomic();
 	for await (const station of stations) {
 		transaction.set(["station", station.value.id], {
 			...station.value,
