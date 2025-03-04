@@ -286,7 +286,7 @@ router.delete("/reset-wind-history", authMiddleware, async (ctx) => {
 		transaction.set(["station", station.value.id], {
 			...station.value,
 			totalEntries: 0,
-			months: {},
+			months: [],
 		});
 	}
 
