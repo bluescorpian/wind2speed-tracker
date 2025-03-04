@@ -272,10 +272,10 @@ router.get("/wind-history/:stationId", async (ctx) => {
 });
 
 router.delete("/reset-wind-history", authMiddleware, async (ctx) => {
-	const entries = await kv.list<TableDataItem>({
+	const entries = kv.list<TableDataItem>({
 		prefix: ["windHistoryData"],
 	});
-	const stations = await kv.list<StationStats>({
+	const stations = kv.list<StationStats>({
 		prefix: ["station"],
 	});
 	const transaction = kv.atomic();
@@ -295,6 +295,7 @@ router.delete("/reset-wind-history", authMiddleware, async (ctx) => {
 		ctx.response.body = { msg: "Deleted all wind history data" };
 		ctx.response.status = 200;
 	} else {
+		console.error("Failed to delete wind history data", result);
 		ctx.response.body = {
 			msg: "Failed to delete wind history data",
 			result,
