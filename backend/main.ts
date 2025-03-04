@@ -2,7 +2,6 @@ import { StationStats, type TableDataItem } from "../types.d.ts";
 import { getWSData } from "./wind2speed.ts";
 import { Application, Context, Router } from "@oak/oak";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
-import { stringify } from "jsr:@std/csv/stringify";
 
 const kv = await Deno.openKv(Deno.env.get("KV_STORE") || undefined);
 
@@ -70,7 +69,9 @@ async function downloadWindData(stationId: number) {
 		transaction.set(["station", data.station.id], {
 			...data.station,
 			totalEntries:
-				(stationStats.value?.totalEntries ?? 0) + newTableData.length,
+				(stationStats.value?.totalEntries ??
+					(stationStats.value as any)?.entries ??
+					0) + newTableData.length,
 			latestEntryTimestamp: parseObsTimeLocal(
 				newTableData[0].obsTimeLocal
 			).getTime(),
