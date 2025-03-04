@@ -81,6 +81,7 @@ export interface WindData {
 }
 
 export interface StationStats extends Station {
-	entries: number;
+	totalEntries: number;
+	months: { year: number; month: number }[];
 	latestEntryTimestamp: number;
 }

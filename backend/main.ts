@@ -1,6 +1,6 @@
 import { StationStats, type TableDataItem } from "../types.d.ts";
 import { getWSData } from "./wind2speed.ts";
-import { Application, Router } from "@oak/oak";
+import { Application, Context, Router } from "@oak/oak";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { stringify } from "jsr:@std/csv/stringify";
 
@@ -41,6 +41,7 @@ async function downloadWindData(stationId: number) {
 		"station",
 		data.station.id,
 	]);
+	const months = stationStats.value?.months || [];
 	const latestEntryTimestamp = stationStats.value?.latestEntryTimestamp || 0;
 
 	const newTableData = data.tableData.filter(
@@ -53,18 +54,28 @@ async function downloadWindData(stationId: number) {
 		const transaction = kv.atomic();
 
 		for (const entry of newTableData) {
+			const date = parseObsTimeLocal(entry.obsTimeLocal);
+			const year = date.getFullYear();
+			const month = date.getMonth();
+
+			if (!months.some((m) => m.year === year && m.month === month)) {
+				months.push({ year, month });
+			}
+
 			transaction.set(
-				["windHistoryData", data.station.id, entry.id],
+				["windHistoryData", data.station.id, year, month, entry.id],
 				entry
 			);
 		}
 		transaction.set(["station", data.station.id], {
 			...data.station,
-			entries: (stationStats.value?.entries ?? 0) + newTableData.length,
+			totalEntries:
+				(stationStats.value?.totalEntries ?? 0) + newTableData.length,
 			latestEntryTimestamp: parseObsTimeLocal(
 				newTableData[0].obsTimeLocal
 			).getTime(),
-		});
+			months,
+		} as StationStats);
 		transaction.set(["latestUpdatedStation"], stationId);
 
 		const result = await transaction.commit();
@@ -86,6 +97,20 @@ function parseObsTimeLocal(obsTimeLocal: string): Date {
 
 const router = new Router();
 
+const authMiddleware = async (ctx: Context, next: () => Promise<unknown>) => {
+	if (
+		(ctx.request.headers.get("Authorization") ?? "") !==
+		(Deno.env.get("PASSWORD") ?? "")
+	) {
+		ctx.response.status = 401;
+		ctx.response.body = {
+			msg: "Unauthorized",
+		};
+		return;
+	}
+	await next();
+};
+
 router.post("/login", async (ctx) => {
 	const body = await ctx.request.body.text();
 	const formData = new URLSearchParams(body);
@@ -104,18 +129,7 @@ router.get("/tracked-stations", async (ctx) => {
 	ctx.response.body = trackedStations ?? [];
 });
 
-router.post("/tracked-stations", async (ctx) => {
-	if (
-		(ctx.request.headers.get("Authorization") ?? "") !==
-		(Deno.env.get("PASSWORD") ?? "")
-	) {
-		ctx.response.status = 401;
-		ctx.response.body = {
-			msg: "Unauthorized",
-		};
-		return;
-	}
-
+router.post("/tracked-stations", authMiddleware, async (ctx) => {
 	try {
 		const body = await ctx.request.body.text();
 		const formData = new URLSearchParams(body);
@@ -140,6 +154,35 @@ router.post("/tracked-stations", async (ctx) => {
 	}
 });
 
+router.post(
+	"/update-station-months/:stationId",
+	authMiddleware,
+	async (ctx) => {
+		const stationId = Number(ctx.params.stationId);
+		const stationStats = await kv.get<StationStats>(["station", stationId]);
+		const tableDataEntries = await kv.list<TableDataItem>({
+			prefix: ["windHistoryData", stationId],
+		});
+
+		for await (const entry of tableDataEntries) {
+			const date = parseObsTimeLocal(entry.value.obsTimeLocal);
+			const year = date.getFullYear();
+			const month = date.getMonth();
+
+			if (
+				!stationStats.value?.months.some(
+					(m) => m.year === year && m.month === month
+				)
+			) {
+				stationStats.value?.months.push({ year, month });
+			}
+		}
+		await kv.set(["station", stationId], stationStats.value);
+
+		ctx.response.status = 200;
+	}
+);
+
 router.get("/stations", async (ctx) => {
 	const stationsEntries = await kv.list<StationStats>({
 		prefix: ["station"],
@@ -152,20 +195,35 @@ router.get("/stations", async (ctx) => {
 	ctx.response.body = stations;
 });
 
-router.get("/wind-history/:stationId/csv", async (ctx) => {
+router.get("/wind-history/:stationId", async (ctx) => {
 	const stationId = Number(ctx.params.stationId);
-	const entries = await kv.list<TableDataItem>({
-		prefix: ["windHistoryData", stationId],
-	});
-	const data: TableDataItem[] = [];
-	for await (const entry of entries) {
-		data.push(entry.value);
+	const fileformat = ctx.request.url.searchParams.get("fileformat") || "csv";
+	const year = Number(ctx.request.url.searchParams.get("year"));
+	const month = Number(ctx.request.url.searchParams.get("month"));
+	let datePrefix = [];
+	if (year) {
+		datePrefix.push(year);
+		if (month) datePrefix.push(month);
 	}
-	const csv = await stringify(
-		data as unknown as readonly Record<string, unknown>[],
-		{
-			headers: true,
-			columns: [
+
+	const filenameParts = ["wind-history", stationId.toString()];
+	if (year) {
+		filenameParts.push(year.toString());
+		if (month) {
+			filenameParts.push(month.toString());
+		}
+	}
+	const filename = filenameParts.join("-") + ".csv";
+
+	const entries = await kv.list<TableDataItem>({
+		prefix: ["windHistoryData", stationId, ...datePrefix],
+	});
+
+	const encoder = new TextEncoder();
+	const stream = new ReadableStream({
+		async start(controller) {
+			// Write CSV headers
+			const headers = [
 				"id",
 				"stationId",
 				"obsTimeLocal",
@@ -178,16 +236,38 @@ router.get("/wind-history/:stationId/csv", async (ctx) => {
 				"humidityAvg",
 				"tempAvg",
 				"pressureAvg",
-			],
-		}
-	);
+			];
+			controller.enqueue(encoder.encode(headers.join(",") + "\n"));
+
+			// Write CSV data rows
+			for await (const entry of entries) {
+				const row = [
+					entry.value.id,
+					entry.value.stationId,
+					entry.value.obsTimeLocal,
+					entry.value.winddirHigh,
+					entry.value.winddirLow,
+					entry.value.winddirAvg,
+					entry.value.windspeedHigh,
+					entry.value.windspeedAvg,
+					entry.value.windspeedLow,
+					entry.value.humidityAvg,
+					entry.value.tempAvg,
+					entry.value.pressureAvg,
+				];
+				controller.enqueue(encoder.encode(row.join(",") + "\n"));
+			}
+
+			controller.close();
+		},
+	});
+
 	ctx.response.headers.set("Content-Type", "text/csv");
-	const date = new Date().toISOString().split("T")[0];
 	ctx.response.headers.set(
 		"Content-Disposition",
-		`attachment; filename="wind-history-${stationId}-${date}.csv"`
+		`attachment; filename="${filename}"`
 	);
-	ctx.response.body = csv;
+	ctx.response.body = stream;
 });
 
 const app = new Application();

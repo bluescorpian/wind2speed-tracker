@@ -9,10 +9,12 @@
 		ListGroupItem,
 	} from "@sveltestrap/sveltestrap";
 	import { type StationStats } from "../../../types";
-
 	import moment from "moment";
+	import DownloadModal from "./DownloadModal.svelte";
 
 	let stations: StationStats[] = $state([]);
+	let downloadOpen: boolean = $state(false);
+	let downloadStation: StationStats | null = $state(null);
 	$effect(() => {
 		fetch(import.meta.env.VITE_API_URL + "/stations")
 			.then(async (res) => {
@@ -38,15 +40,23 @@
 					).fromNow()}</ListGroupItem
 				>
 				<ListGroupItem
-					><strong>Total Entries</strong>: {station.entries}</ListGroupItem
+					><strong>Total Entries</strong>: {station.totalEntries}</ListGroupItem
 				>
 			</ListGroup>
-			<CardFooter
-				><Button
-					href={import.meta.env.VITE_API_URL +
-						`/wind-history/${station.id}/csv`}>CSV</Button
-				></CardFooter
-			>
+			<CardFooter>
+				<Button
+					color="secondary"
+					outline
+					onclick={() => {
+						downloadStation = station;
+						downloadOpen = true;
+					}}>Download</Button
+				>
+			</CardFooter>
 		</Card>
 	</Col>
 {/each}
+{#if downloadStation}
+	<DownloadModal bind:isOpen={downloadOpen} station={downloadStation}
+	></DownloadModal>
+{/if}
